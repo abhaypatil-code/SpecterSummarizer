@@ -1,0 +1,126 @@
+from transformers import T5ForConditionalGeneration, T5Tokenizer, Seq2SeqTrainingArguments, Seq2SeqTrainer, DataCollatorForSeq2Seq
+from datasets import Dataset
+from utils import load_jsonl
+import torch
+import os
+
+def prepare_dataset(file_path: str, tokenizer, max_input_length: int = 512, max_target_length: int = 128):
+    """Load and tokenize InLSum processed data for training."""
+    data = load_jsonl(file_path)
+    
+    # Extract fields
+    ids = [d['ID'] for d in data]
+    judgments = [d['judgment_text'] for d in data]
+    summaries = [d['summary'] for d in data]
+    
+    # Tokenize inputs
+    model_inputs = tokenizer(
+        judgments,
+        max_length=max_input_length,
+        truncation=True,
+        padding='max_length'
+    )
+    
+    # Tokenize summaries (labels)
+    labels = tokenizer(
+        summaries,
+        max_length=max_target_length,
+        truncation=True,
+        padding='max_length'
+    )
+    
+    # Create HF Dataset
+    dataset = Dataset.from_dict({
+        'input_ids': model_inputs['input_ids'],
+        'attention_mask': model_inputs['attention_mask'],
+        'labels': labels['input_ids'],
+        'ID': ids  # Keep IDs for tracking
+    })
+    
+    return dataset
+
+def train_model(
+    train_file: str,
+    output_dir: str,
+    model_name: str = "t5-small",
+    epochs: int = 3,
+    batch_size: int = 4,
+    learning_rate: float = 3e-4,
+    warmup_steps: int = 500
+):
+    """
+    Train T5-small for legal summarization (InLSum dataset).
+    
+    Args:
+        train_file: Path to processed training JSONL
+        output_dir: Where to save model checkpoints
+        model_name: Pretrained model identifier
+        epochs: Number of training epochs
+        batch_size: Number of examples per batch (reduce if OOM)
+        learning_rate: Optimizer learning rate
+        warmup_steps: Learning rate warmup steps
+    """
+    print("\n" + "="*80)
+    print(f"TRAINING T5-SMALL ON InLSum DATASET")
+    print("="*80 + "\n")
+    
+    tokenizer = T5Tokenizer.from_pretrained(model_name, legacy=False)
+    model = T5ForConditionalGeneration.from_pretrained(model_name)
+    
+    # Prepare dataset
+    print(f"📂 Loading data from: {train_file}")
+    train_dataset = prepare_dataset(train_file, tokenizer)
+    print(f"✅ Loaded {len(train_dataset)} training examples\n")
+    
+    # Training arguments
+    training_args = Seq2SeqTrainingArguments(
+        output_dir=output_dir,
+        num_train_epochs=epochs,
+        per_device_train_batch_size=batch_size,
+        per_device_eval_batch_size=batch_size,
+        warmup_steps=warmup_steps,
+        learning_rate=learning_rate,
+        weight_decay=0.01,
+        logging_dir=os.path.join(output_dir, '../logs'),
+        logging_steps=50,
+        save_steps=500,
+        save_total_limit=2,
+        predict_with_generate=True,
+        fp16=torch.cuda.is_available(),
+        report_to="none",
+        push_to_hub=False
+    )
+    
+    # Data collator
+    data_collator = DataCollatorForSeq2Seq(tokenizer, model=model)
+    
+    # Trainer
+    trainer = Seq2SeqTrainer(
+        model=model,
+        args=training_args,
+        train_dataset=train_dataset,
+        tokenizer=tokenizer,
+        data_collator=data_collator
+    )
+    
+    # Train
+    print(f"🚀 Starting training...")
+    print(f"   Device: {'GPU' if torch.cuda.is_available() else 'CPU'}")
+    print(f"   Epochs: {epochs}")
+    print(f"   Batch size: {batch_size}")
+    print(f"   Learning rate: {learning_rate}\n")
+    
+    trainer.train()
+    
+    # Save final model
+    trainer.save_model(output_dir)
+    tokenizer.save_pretrained(output_dir)
+    
+    print(f"\n✅ Training complete! Model saved to: {output_dir}")
+    print("="*80 + "\n")
+
+if __name__ == "__main__":
+    train_model(
+        train_file=r"D:\Software\JustNLP\data\train_processed.jsonl",
+        output_dir=r"D:\Software\JustNLP\outputs\model"
+    )
