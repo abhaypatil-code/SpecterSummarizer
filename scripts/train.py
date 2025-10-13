@@ -1,8 +1,10 @@
+import os
+import argparse
+import json
 from transformers import T5ForConditionalGeneration, T5Tokenizer, Seq2SeqTrainingArguments, Seq2SeqTrainer, DataCollatorForSeq2Seq
 from datasets import Dataset
 from utils import load_jsonl
 import torch
-import os
 
 def prepare_dataset(file_path: str, tokenizer, max_input_length: int = 512, max_target_length: int = 128):
     """Load and tokenize InLSum processed data for training."""
@@ -113,6 +115,7 @@ def train_model(
     trainer.train()
     
     # Save final model
+    os.makedirs(output_dir, exist_ok=True)
     trainer.save_model(output_dir)
     tokenizer.save_pretrained(output_dir)
     
@@ -120,7 +123,21 @@ def train_model(
     print("="*80 + "\n")
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Train T5 model for legal summarization.")
+    parser.add_argument("--train_file", type=str, default="data/train_processed.jsonl", help="Path to processed training file.")
+    parser.add_argument("--output_dir", type=str, default="outputs/model", help="Directory to save the trained model.")
+    parser.add_argument("--hyperparams", type=str, default="hyperparams.json", help="Path to hyperparameters JSON file.")
+    args = parser.parse_args()
+
+    with open(args.hyperparams) as f:
+        hyperparams = json.load(f)
+
     train_model(
-        train_file=r"D:\Software\JustNLP\data\train_processed.jsonl",
-        output_dir=r"D:\Software\JustNLP\outputs\model"
+        train_file=args.train_file,
+        output_dir=args.output_dir,
+        model_name=hyperparams.get("model_name", "t5-small"),
+        epochs=hyperparams.get("num_epochs", 3),
+        batch_size=hyperparams.get("batch_size", 4),
+        learning_rate=hyperparams.get("learning_rate", 3e-4),
+        warmup_steps=hyperparams.get("warmup_steps", 500)
     )

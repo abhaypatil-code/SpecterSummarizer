@@ -3,11 +3,10 @@ import json
 import venv
 
 # === Base project directory ===
-base_dir = r"D:\Software\JustNLP"
+base_dir = os.getcwd()
 
 # === Folder structure ===
 folders = [
-    "venv_legal",              # Virtual environment
     "data",
     "scripts",
     "outputs",
@@ -18,15 +17,17 @@ folders = [
 
 # === File placeholders ===
 files = [
-    "train_judg.jsonl",
-    "train_ref_summ.jsonl",
-    "val_judg.jsonl",
+    os.path.join("data", "train_judg.jsonl"),
+    os.path.join("data", "train_ref_summ.jsonl"),
+    os.path.join("data", "val_judg.jsonl"),
+    os.path.join("data", "val_ref_summ.jsonl"),
     os.path.join("data", "toy_dataset.jsonl"),
     os.path.join("scripts", "preprocess.py"),
     os.path.join("scripts", "train.py"),
     os.path.join("scripts", "evaluate.py"),
     os.path.join("scripts", "utils.py"),
-    "hyperparams.json"
+    "hyperparams.json",
+    "requirements.txt"
 ]
 
 # === Create folders ===
@@ -47,6 +48,16 @@ for file in files:
                     "num_epochs": 3,
                     "max_length": 512
                 }, f, indent=4)
+            elif file.endswith("requirements.txt"):
+                f.write(
+                    "transformers\n"
+                    "datasets\n"
+                    "evaluate\n"
+                    "torch\n"
+                    "tqdm\n"
+                    "sacrebleu\n"
+                    "rouge_score\n"
+                )
             else:
                 f.write("")  # empty placeholder
         print(f"[+] Created file: {path}")

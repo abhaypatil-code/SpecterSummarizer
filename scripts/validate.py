@@ -1,13 +1,15 @@
+import argparse
 from transformers import T5ForConditionalGeneration, T5Tokenizer
 from utils import load_jsonl
 import torch
 
-def validate_samples(model_path: str, num_samples: int = 5):
+def validate_samples(model_path: str, val_file: str, num_samples: int = 5):
     """
     Manually inspect generated summaries vs references (InLSum format).
     
     Args:
         model_path: Path to trained model
+        val_file: Path to processed validation file
         num_samples: Number of examples to display
     """
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -16,7 +18,7 @@ def validate_samples(model_path: str, num_samples: int = 5):
     model.eval()
     
     # Load validation data (processed)
-    val_data = load_jsonl(r"D:\Software\JustNLP\data\val_processed.jsonl")[:num_samples]
+    val_data = load_jsonl(val_file)[:num_samples]
     
     print("\n" + "="*80)
     print("MANUAL VALIDATION - InLSum Dataset")
@@ -40,4 +42,14 @@ def validate_samples(model_path: str, num_samples: int = 5):
         print("-" * 80)
 
 if __name__ == "__main__":
-    validate_samples(r"D:\Software\JustNLP\outputs\model", num_samples=3)
+    parser = argparse.ArgumentParser(description="Manually validate generated summaries.")
+    parser.add_argument("--model_path", type=str, default="outputs/model", help="Path to the trained model.")
+    parser.add_argument("--val_file", type=str, default="data/val_processed.jsonl", help="Path to the processed validation file.")
+    parser.add_argument("--num_samples", type=int, default=3, help="Number of samples to validate.")
+    args = parser.parse_args()
+
+    validate_samples(
+        model_path=args.model_path,
+        val_file=args.val_file,
+        num_samples=args.num_samples
+    )

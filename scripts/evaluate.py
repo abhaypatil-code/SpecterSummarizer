@@ -1,3 +1,5 @@
+import os
+import argparse
 from transformers import T5ForConditionalGeneration, T5Tokenizer
 from evaluate import load
 from utils import load_jsonl, save_predictions, save_jsonl
@@ -59,6 +61,7 @@ def generate_summaries(
         predictions.extend(batch_summaries)
     
     # Save predictions with IDs (for alignment)
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
     predictions_with_ids = [{"ID": id_, "Summary": pred} for id_, pred in zip(ids, predictions)]
     save_jsonl(predictions_with_ids, output_file.replace('.txt', '_with_ids.jsonl'))
     
@@ -129,18 +132,24 @@ def evaluate_summaries(predictions_file: str, references_file: str):
     }
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Generate and evaluate summaries.")
+    parser.add_argument("--model_path", type=str, default="outputs/model", help="Path to the trained model.")
+    parser.add_argument("--input_file", type=str, default="data/val_processed.jsonl", help="Path to the processed validation file.")
+    parser.add_argument("--output_file", type=str, default="outputs/predictions/val_predictions.txt", help="Path to save the generated summaries.")
+    parser.add_argument("--references_file", type=str, default="data/val_ref_summ.jsonl", help="Path to the reference summaries.")
+    args = parser.parse_args()
+
     # Generate predictions
     predictions, ids = generate_summaries(
-        model_path=r"D:\Software\JustNLP\outputs\model",
-        input_file=r"D:\Software\JustNLP\data\val_processed.jsonl",
-        output_file=r"D:\Software\JustNLP\outputs\predictions\val_predictions.txt"
+        model_path=args.model_path,
+        input_file=args.input_file,
+        output_file=args.output_file
     )
     
     # Evaluate (if validation references available)
-    import os
-    if os.path.exists(r"D:\Software\JustNLP\val_ref_summ.jsonl"):
+    if os.path.exists(args.references_file):
         # Evaluate using ID-aligned files
         evaluate_summaries(
-            predictions_file=r"D:\Software\JustNLP\outputs\predictions\val_predictions_with_ids.jsonl",
-            references_file=r"D:\Software\JustNLP\val_ref_summ.jsonl"
+            predictions_file=args.output_file.replace('.txt', '_with_ids.jsonl'),
+            references_file=args.references_file
         )

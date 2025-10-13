@@ -1,0 +1,8 @@
+transformers
+datasets
+evaluate
+torch
+tqdm
+sacrebleu
+rouge_score
+protobuf

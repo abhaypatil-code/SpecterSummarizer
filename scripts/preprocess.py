@@ -1,6 +1,7 @@
+import os
+import argparse
 from transformers import T5Tokenizer
 from utils import load_jsonl, save_jsonl
-import os
 
 def preprocess_data(judg_path: str, summ_path: str = None, output_path: str = None, tokenizer_name: str = "t5-small"):
     """
@@ -60,6 +61,7 @@ def preprocess_data(judg_path: str, summ_path: str = None, output_path: str = No
     
     # Save processed data
     if output_path:
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
         save_jsonl(processed, output_path)
         print(f"✅ Preprocessed {len(processed)} examples to {output_path}")
         print(f"   Avg input length: {sum(p['input_length'] for p in processed) / len(processed):.1f} tokens")
@@ -68,27 +70,35 @@ def preprocess_data(judg_path: str, summ_path: str = None, output_path: str = No
     return processed
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Preprocess InLSum dataset.")
+    parser.add_argument("--train_judg", type=str, default="data/train_judg.jsonl", help="Path to training judgments.")
+    parser.add_argument("--train_summ", type=str, default="data/train_ref_summ.jsonl", help="Path to training summaries.")
+    parser.add_argument("--val_judg", type=str, default="data/val_judg.jsonl", help="Path to validation judgments.")
+    parser.add_argument("--val_summ", type=str, default="data/val_ref_summ.jsonl", help="Path to validation summaries.")
+    parser.add_argument("--output_dir", type=str, default="data", help="Directory to save processed files.")
+    args = parser.parse_args()
+
     print("\n" + "="*80)
     print("PREPROCESSING InLSum DATASET")
     print("="*80 + "\n")
     
     # Process training data
-    if os.path.exists(r"D:\Software\JustNLP\train_judg.jsonl"):
+    if os.path.exists(args.train_judg):
         print("[1/2] Processing TRAINING data...")
         preprocess_data(
-            judg_path=r"D:\Software\JustNLP\train_judg.jsonl",
-            summ_path=r"D:\Software\JustNLP\train_ref_summ.jsonl",
-            output_path=r"D:\Software\JustNLP\data\train_processed.jsonl"
+            judg_path=args.train_judg,
+            summ_path=args.train_summ,
+            output_path=os.path.join(args.output_dir, "train_processed.jsonl")
         )
     
     # Process validation data
-    if os.path.exists(r"D:\Software\JustNLP\val_judg.jsonl"):
+    if os.path.exists(args.val_judg):
         print("\n[2/2] Processing VALIDATION data...")
-        val_summ_path = r"D:\Software\JustNLP\val_ref_summ.jsonl" if os.path.exists(r"D:\Software\JustNLP\val_ref_summ.jsonl") else None
+        val_summ_path = args.val_summ if os.path.exists(args.val_summ) else None
         preprocess_data(
-            judg_path=r"D:\Software\JustNLP\val_judg.jsonl",
+            judg_path=args.val_judg,
             summ_path=val_summ_path,
-            output_path=r"D:\Software\JustNLP\data\val_processed.jsonl"
+            output_path=os.path.join(args.output_dir, "val_processed.jsonl")
         )
     
     print("\n" + "="*80)
