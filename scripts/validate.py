@@ -3,7 +3,7 @@ from transformers import T5ForConditionalGeneration, T5Tokenizer
 from utils import load_jsonl
 import torch
 
-def validate_samples(model_path: str, val_file: str, num_samples: int = 5):
+def validate_samples(model_path: str, val_file: str, num_samples: int = 5, tokenizer_name: str = "t5-large"):
     """
     Manually inspect generated summaries vs references (InLSum format).
     
@@ -13,7 +13,7 @@ def validate_samples(model_path: str, val_file: str, num_samples: int = 5):
         num_samples: Number of examples to display
     """
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    tokenizer = T5Tokenizer.from_pretrained(model_path, legacy=False)
+    tokenizer = T5Tokenizer.from_pretrained(tokenizer_name, legacy=False)
     model = T5ForConditionalGeneration.from_pretrained(model_path).to(device)
     model.eval()
     
@@ -30,9 +30,9 @@ def validate_samples(model_path: str, val_file: str, num_samples: int = 5):
         reference = example['summary']
         
         # Generate summary
-        inputs = tokenizer(judgment, return_tensors='pt', max_length=512, truncation=True).to(device)
+        inputs = tokenizer(judgment, return_tensors='pt', max_length=1024, truncation=True).to(device)
         with torch.no_grad():
-            outputs = model.generate(**inputs, max_length=128, num_beams=4)
+            outputs = model.generate(**inputs, max_length=256, num_beams=4)
         prediction = tokenizer.decode(outputs[0], skip_special_tokens=True)
         
         print(f"\n[Example {i} - ID: {doc_id}]")
@@ -46,10 +46,12 @@ if __name__ == "__main__":
     parser.add_argument("--model_path", type=str, default="outputs/model", help="Path to the trained model.")
     parser.add_argument("--val_file", type=str, default="data/val_processed.jsonl", help="Path to the processed validation file.")
     parser.add_argument("--num_samples", type=int, default=3, help="Number of samples to validate.")
+    parser.add_argument("--tokenizer_name", type=str, default="t5-large", help="Tokenizer to use for validation.")
     args = parser.parse_args()
 
     validate_samples(
         model_path=args.model_path,
         val_file=args.val_file,
-        num_samples=args.num_samples
+        num_samples=args.num_samples,
+        tokenizer_name=args.tokenizer_name
     )

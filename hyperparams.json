@@ -1,7 +1,10 @@
+
+
 {
     "model_name": "t5-base",
-    "learning_rate": 3e-05,
+    "learning_rate": 1.9632e-05,
     "batch_size": 8,
-    "num_epochs": 5,
-    "max_length": 512
+    "num_epochs": 3,
+    "weight_decay": 0.018,
+    "gradient_accumulation_steps": 2
 }

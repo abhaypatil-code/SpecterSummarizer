@@ -3,7 +3,7 @@ import argparse
 from transformers import T5Tokenizer
 from utils import load_jsonl, save_jsonl
 
-def preprocess_data(judg_path: str, summ_path: str = None, output_path: str = None, tokenizer_name: str = "t5-small"):
+def preprocess_data(judg_path: str, summ_path: str = None, output_path: str = None, tokenizer_name: str = "t5-small", max_input_length: int = 512):
     """
     Combine judgment and summary JSONL files using ID alignment.
     
@@ -49,8 +49,8 @@ def preprocess_data(judg_path: str, summ_path: str = None, output_path: str = No
         # T5 prefix for summarization task
         input_text = f"summarize: {judgment_text}"
         
-        # Tokenize to check length (max 512 tokens for T5-small input)
-        input_ids = tokenizer.encode(input_text, max_length=512, truncation=True)
+        # Tokenize to check length
+        input_ids = tokenizer.encode(input_text, max_length=max_input_length, truncation=True)
         
         processed.append({
             "ID": doc_id,
@@ -71,11 +71,13 @@ def preprocess_data(judg_path: str, summ_path: str = None, output_path: str = No
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Preprocess InLSum dataset.")
-    parser.add_argument("--train_judg", type=str, default="data/train_judg.jsonl", help="Path to training judgments.")
-    parser.add_argument("--train_summ", type=str, default="data/train_ref_summ.jsonl", help="Path to training summaries.")
-    parser.add_argument("--val_judg", type=str, default="data/val_judg.jsonl", help="Path to validation judgments.")
-    parser.add_argument("--val_summ", type=str, default="data/val_ref_summ.jsonl", help="Path to validation summaries.")
+    parser.add_argument("--train_judg", type="str", default="data/train_judg.jsonl", help="Path to training judgments.")
+    parser.add_argument("--train_summ", type="str", default="data/train_ref_summ.jsonl", help="Path to training summaries.")
+    parser.add_argument("--val_judg", type="str", default="data/val_judg.jsonl", help="Path to validation judgments.")
+    parser.add_argument("--val_summ", type="str", default="data/val_ref_summ.jsonl", help="Path to validation summaries.")
     parser.add_argument("--output_dir", type=str, default="data", help="Directory to save processed files.")
+    parser.add_argument("--tokenizer_name", type=str, default="t5-large", help="Tokenizer to use for preprocessing.")
+    parser.add_argument("--max_input_length", type=int, default=1024, help="Max token length for input.")
     args = parser.parse_args()
 
     print("\n" + "="*80)
@@ -88,7 +90,9 @@ if __name__ == "__main__":
         preprocess_data(
             judg_path=args.train_judg,
             summ_path=args.train_summ,
-            output_path=os.path.join(args.output_dir, "train_processed.jsonl")
+            output_path=os.path.join(args.output_dir, "train_processed.jsonl"),
+            tokenizer_name=args.tokenizer_name,
+            max_input_length=args.max_input_length
         )
     
     # Process validation data
@@ -98,7 +102,9 @@ if __name__ == "__main__":
         preprocess_data(
             judg_path=args.val_judg,
             summ_path=val_summ_path,
-            output_path=os.path.join(args.output_dir, "val_processed.jsonl")
+            output_path=os.path.join(args.output_dir, "val_processed.jsonl"),
+            tokenizer_name=args.tokenizer_name,
+            max_input_length=args.max_input_length
         )
     
     print("\n" + "="*80)

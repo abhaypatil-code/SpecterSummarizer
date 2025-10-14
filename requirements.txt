@@ -3,8 +3,7 @@ datasets
 evaluate
 torch
 tqdm
+scikit-learn
 sacrebleu
 rouge_score
-protobuf
-sentencepiece
-accelerate
+optuna

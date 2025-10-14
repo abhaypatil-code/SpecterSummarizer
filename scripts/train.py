@@ -1,7 +1,7 @@
 import os
 import argparse
 import json
-from transformers import T5ForConditionalGeneration, T5Tokenizer, Seq2SeqTrainingArguments, Seq2SeqTrainer, DataCollatorForSeq2Seq
+from transformers import T5ForConditionalGeneration, T5Tokenizer, Seq2SeqTrainingArguments, Seq2SeqTrainer, DataCollatorForSeq2Seq, EarlyStoppingCallback
 from datasets import Dataset
 from utils import load_jsonl
 import torch
@@ -49,7 +49,9 @@ def train_model(
     epochs: int = 3,
     batch_size: int = 4,
     learning_rate: float = 3e-4,
-    warmup_steps: int = 500
+    warmup_steps: int = 500,
+    weight_decay: float = 0.01,
+    gradient_accumulation_steps: int = 1
 ):
     """
     Train T5 model for legal summarization (InLSum dataset).
@@ -75,10 +77,11 @@ def train_model(
         per_device_eval_batch_size=batch_size,
         warmup_steps=warmup_steps,
         learning_rate=learning_rate,
-        weight_decay=0.01,
+        weight_decay=weight_decay,
         logging_dir=os.path.join(output_dir, '../logs'),
         logging_steps=50,
-        evaluation_strategy="epoch",
+        # Corrected Argument Names:
+        eval_strategy="epoch",
         save_strategy="epoch",
         save_total_limit=2,
         load_best_model_at_end=True,
@@ -86,6 +89,7 @@ def train_model(
         greater_is_better=False,
         predict_with_generate=True,
         fp16=torch.cuda.is_available(),
+        gradient_accumulation_steps=gradient_accumulation_steps,
         report_to="none"
     )
     
@@ -99,7 +103,8 @@ def train_model(
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
         tokenizer=tokenizer,
-        data_collator=data_collator
+        data_collator=data_collator,
+        callbacks=[EarlyStoppingCallback(early_stopping_patience=3)]
     )
     
     # Train
@@ -138,5 +143,7 @@ if __name__ == "__main__":
         epochs=hyperparams.get("num_epochs", 3),
         batch_size=hyperparams.get("batch_size", 4),
         learning_rate=hyperparams.get("learning_rate", 3e-4),
-        warmup_steps=hyperparams.get("warmup_steps", 500)
+        warmup_steps=hyperparams.get("warmup_steps", 500),
+        weight_decay=hyperparams.get("weight_decay", 0.01),
+        gradient_accumulation_steps=hyperparams.get("gradient_accumulation_steps", 1)
     )

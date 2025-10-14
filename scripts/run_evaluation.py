@@ -13,6 +13,7 @@ def generate_summaries(
     output_file: str,
     max_length: int = 256,
     num_beams: int = 4,
+    length_penalty: float = 2.0,
     batch_size: int = 8
 ):
     """
@@ -47,7 +48,7 @@ def generate_summaries(
                 max_length=max_length,
                 num_beams=num_beams,
                 early_stopping=True,
-                length_penalty=2.0
+                length_penalty=length_penalty
             )
         
         batch_summaries = tokenizer.batch_decode(outputs, skip_special_tokens=True)
@@ -115,13 +116,21 @@ if __name__ == "__main__":
     parser.add_argument("--input_file", type=str, default="data/val_processed.jsonl", help="Path to the processed validation file.")
     parser.add_argument("--output_file", type=str, default="outputs/predictions/val_predictions.txt", help="Path to save the generated summaries.")
     parser.add_argument("--references_file", type=str, default=None, help="Path to the reference summaries (optional).")
+    parser.add_argument("--max_length", type=int, default=256, help="Maximum length for generated summaries.")
+    parser.add_argument("--num_beams", type=int, default=4, help="Number of beams for beam search.")
+    parser.add_argument("--length_penalty", type=float, default=2.0, help="Length penalty for generation.")
+    parser.add_argument("--batch_size", type=int, default=8, help="Batch size for generation.")
     args = parser.parse_args()
 
     # Generate predictions
     predictions, ids = generate_summaries(
         model_path=args.model_path,
         input_file=args.input_file,
-        output_file=args.output_file
+        output_file=args.output_file,
+        max_length=args.max_length,
+        num_beams=args.num_beams,
+        length_penalty=args.length_penalty,
+        batch_size=args.batch_size
     )
     
     # Evaluate only if reference file is provided
