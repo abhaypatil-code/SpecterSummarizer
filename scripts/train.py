@@ -43,6 +43,7 @@ def prepare_dataset(file_path: str, tokenizer, max_input_length: int = 512, max_
 
 def train_model(
     train_file: str,
+    val_file: str,
     output_dir: str,
     model_name: str = "t5-small",
     epochs: int = 3,
@@ -51,48 +52,38 @@ def train_model(
     warmup_steps: int = 500
 ):
     """
-    Train T5-small for legal summarization (InLSum dataset).
-    
-    Args:
-        train_file: Path to processed training JSONL
-        output_dir: Where to save model checkpoints
-        model_name: Pretrained model identifier
-        epochs: Number of training epochs
-        batch_size: Number of examples per batch (reduce if OOM)
-        learning_rate: Optimizer learning rate
-        warmup_steps: Learning rate warmup steps
+    Train T5 model for legal summarization (InLSum dataset).
     """
     print("\n" + "="*80)
-    print(f"TRAINING T5-SMALL ON InLSum DATASET")
+    print(f"TRAINING {model_name.upper()} ON InLSum DATASET")
     print("="*80 + "\n")
     
     tokenizer = T5Tokenizer.from_pretrained(model_name, legacy=False)
     model = T5ForConditionalGeneration.from_pretrained(model_name)
     
-    # Prepare dataset
-    print(f"📂 Loading data from: {train_file}")
+    # Prepare datasets
+    print(f"📂 Loading data from: {train_file} and {val_file}")
     train_dataset = prepare_dataset(train_file, tokenizer)
-    print(f"✅ Loaded {len(train_dataset)} training examples\n")
-    
-    # In scripts/train.py, find the Seq2SeqTrainingArguments section
+    val_dataset = prepare_dataset(val_file, tokenizer)
+    print(f"✅ Loaded {len(train_dataset)} training and {len(val_dataset)} validation examples\n")
 
-# Training arguments
+    # Training arguments
     training_args = Seq2SeqTrainingArguments(
         output_dir=output_dir,
         num_train_epochs=epochs,
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=batch_size,
-    
-    # ADD THIS LINE
-        gradient_accumulation_steps=2,
-
         warmup_steps=warmup_steps,
         learning_rate=learning_rate,
         weight_decay=0.01,
         logging_dir=os.path.join(output_dir, '../logs'),
         logging_steps=50,
-        save_steps=500,
+        evaluation_strategy="epoch",
+        save_strategy="epoch",
         save_total_limit=2,
+        load_best_model_at_end=True,
+        metric_for_best_model="loss",
+        greater_is_better=False,
         predict_with_generate=True,
         fp16=torch.cuda.is_available(),
         report_to="none"
@@ -106,6 +97,7 @@ def train_model(
         model=model,
         args=training_args,
         train_dataset=train_dataset,
+        eval_dataset=val_dataset,
         tokenizer=tokenizer,
         data_collator=data_collator
     )
@@ -124,12 +116,13 @@ def train_model(
     trainer.save_model(output_dir)
     tokenizer.save_pretrained(output_dir)
     
-    print(f"\n✅ Training complete! Model saved to: {output_dir}")
+    print(f"\n✅ Training complete! Best model saved to: {output_dir}")
     print("="*80 + "\n")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train T5 model for legal summarization.")
     parser.add_argument("--train_file", type=str, default="data/train_processed.jsonl", help="Path to processed training file.")
+    parser.add_argument("--val_file", type=str, default="data/val_processed.jsonl", help="Path to processed validation file.")
     parser.add_argument("--output_dir", type=str, default="outputs/model", help="Directory to save the trained model.")
     parser.add_argument("--hyperparams", type=str, default="hyperparams.json", help="Path to hyperparameters JSON file.")
     args = parser.parse_args()
@@ -139,6 +132,7 @@ if __name__ == "__main__":
 
     train_model(
         train_file=args.train_file,
+        val_file=args.val_file,
         output_dir=args.output_dir,
         model_name=hyperparams.get("model_name", "t5-small"),
         epochs=hyperparams.get("num_epochs", 3),

@@ -11,7 +11,7 @@ def generate_summaries(
     model_path: str,
     input_file: str,
     output_file: str,
-    max_length: int = 128,
+    max_length: int = 256,
     num_beams: int = 4,
     batch_size: int = 8
 ):
@@ -47,7 +47,7 @@ def generate_summaries(
                 max_length=max_length,
                 num_beams=num_beams,
                 early_stopping=True,
-                length_penalty=1.0
+                length_penalty=2.0
             )
         
         batch_summaries = tokenizer.batch_decode(outputs, skip_special_tokens=True)
