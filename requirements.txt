@@ -2,6 +2,8 @@ transformers
 datasets
 evaluate
 torch
+torchvision
+torchaudio
 tqdm
 scikit-learn
 sacrebleu

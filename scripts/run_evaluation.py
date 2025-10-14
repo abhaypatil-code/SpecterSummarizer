@@ -27,7 +27,9 @@ def generate_summaries(
     model.eval()
 
     data = load_jsonl(input_file)
-    documents = [item['Judgement'] for item in data]
+    # --- FIX for KeyError in Prediction Script ---
+    # Changed 'Judgement' to 'judgment_text' to match the preprocessed data.
+    documents = [item['judgment_text'] for item in data]
     ids = [item['ID'] for item in data]
 
     predictions = []
@@ -80,7 +82,9 @@ def evaluate_summaries(predictions_file: str, references_file: str):
     
     # Create dictionaries for quick lookup by ID
     pred_dict = {item['ID']: item['Summary'] for item in pred_data}
-    ref_dict = {item['ID']: item['Summary'] for item in ref_data}
+    # --- FIX for KeyError in Evaluation Logic ---
+    # Changed 'Summary' to 'summary' to match the preprocessed data.
+    ref_dict = {item['ID']: item['summary'] for item in ref_data}
     
     common_ids = sorted(set(pred_dict.keys()) & set(ref_dict.keys()))
     

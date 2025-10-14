@@ -8,6 +8,8 @@ def preprocess_data(
     judg_path: str,
     summ_path: str = None,
     output_path: str = None,
+    # --- FIX for Inconsistent Model Name Defaults ---
+    # Aligned the default tokenizer to 't5-base' for consistency.
     tokenizer_name: str = "t5-base",
     max_input_length: int = 1024
 ):
@@ -101,6 +103,8 @@ if __name__ == "__main__":
     parser.add_argument("--val_judg_path", type=str, default="data/val_judg.jsonl", help="Path to the validation judgments JSONL file.")
     parser.add_argument("--val_summ_path", type=str, default="data/val_ref_summ.jsonl", help="Path to the validation reference summaries JSONL file.")
     parser.add_argument("--output_dir", type=str, default="data", help="Directory where the processed files will be saved.")
+    # --- FIX for Inconsistent Model Name Defaults ---
+    # Aligned the default tokenizer to 't5-base' for consistency.
     parser.add_argument("--tokenizer_name", type=str, default="t5-base", help="Name or path of the tokenizer to use for preprocessing.")
     parser.add_argument("--max_input_length", type=int, default=1024, help="Maximum token length for the input judgments.")
     args = parser.parse_args()
