@@ -7,3 +7,5 @@ scikit-learn
 sacrebleu
 rouge_score
 optuna
+nltk
+accelerate

@@ -1,4 +1,5 @@
 import os
+import json
 import argparse
 import optuna
 from transformers import (
@@ -51,7 +52,6 @@ def objective(trial: optuna.Trial):
     learning_rate = trial.suggest_float("learning_rate", 1e-5, 5e-5, log=True)
     per_device_train_batch_size = trial.suggest_categorical("per_device_train_batch_size", [4, 8])
     num_train_epochs = trial.suggest_int("num_train_epochs", 3, 5)
-    weight_decay = trial.suggest_float("weight_decay", 0.01, 0.1, log=True)
     
     # --- Static Parameters ---
     model_name = "t5-base"
@@ -70,15 +70,15 @@ def objective(trial: optuna.Trial):
         num_train_epochs=num_train_epochs,
         per_device_train_batch_size=per_device_train_batch_size,
         learning_rate=learning_rate,
-        weight_decay=weight_decay,
-        # Corrected Argument Names:
-        eval_strategy="epoch",
+        weight_decay=0.01, # Using a fixed common value, can be tuned as well
+        # Updated Argument Name:
+        evaluation_strategy="epoch",
         save_strategy="epoch",
         load_best_model_at_end=True,
         metric_for_best_model="loss",
         greater_is_better=False,
         fp16=torch.cuda.is_available(),
-        report_to="none"
+        report_to="none" # Disables integration with wandb, etc.
     )
     
     data_collator = DataCollatorForSeq2Seq(tokenizer, model=model)
@@ -99,16 +99,28 @@ def objective(trial: optuna.Trial):
     return eval_results["eval_loss"]
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Tune hyperparameters for T5 model.")
-    parser.add_argument("--n_trials", type=int, default=20, help="Number of tuning trials.")
+    parser = argparse.ArgumentParser(description="Tune hyperparameters for the T5 summarization model.")
+    parser.add_argument("--n_trials", type=int, default=10, help="Number of hyperparameter tuning trials to run.")
     args = parser.parse_args()
 
+    # Create a study to minimize the validation loss
     study = optuna.create_study(direction="minimize")
     study.optimize(objective, n_trials=args.n_trials)
 
+    print("\nHyperparameter tuning finished.")
     print("Best trial:")
     trial = study.best_trial
-    print(f"  Value: {trial.value}")
-    print("  Params: ")
+    
+    print(f"  Value (Validation Loss): {trial.value:.4f}")
+    print("  Best Parameters: ")
     for key, value in trial.params.items():
         print(f"    {key}: {value}")
+        
+    # --- Save the best hyperparameters to a JSON file ---
+    best_hyperparams = study.best_trial.params
+    output_file = "hyperparams.json"
+    
+    with open(output_file, 'w') as f:
+        json.dump(best_hyperparams, f, indent=4)
+        
+    print(f"\n✅ Best hyperparameters saved to {output_file}")
