@@ -3,7 +3,7 @@ from transformers import T5ForConditionalGeneration, T5Tokenizer
 from utils import load_jsonl
 import torch
 
-def validate_samples(model_path: str, val_file: str, num_samples: int = 5, tokenizer_name: str = "t5-large"):
+def validate_samples(model_path: str, val_file: str, num_samples: int = 5, tokenizer_name: str = "t5-base"):
     """
     Manually inspect generated summaries vs references (InLSum format).
     
@@ -46,7 +46,7 @@ if __name__ == "__main__":
     parser.add_argument("--model_path", type=str, default="outputs/model", help="Path to the trained model.")
     parser.add_argument("--val_file", type=str, default="data/val_processed.jsonl", help="Path to the processed validation file.")
     parser.add_argument("--num_samples", type=int, default=3, help="Number of samples to validate.")
-    parser.add_argument("--tokenizer_name", type=str, default="t5-large", help="Tokenizer to use for validation.")
+    parser.add_argument("--tokenizer_name", type=str, default="t5-base", help="Tokenizer to use for validation.")
     args = parser.parse_args()
 
     validate_samples(

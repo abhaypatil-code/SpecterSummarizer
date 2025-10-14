@@ -8,7 +8,7 @@ def preprocess_data(
     judg_path: str,
     summ_path: str = None,
     output_path: str = None,
-    tokenizer_name: str = "t5-small",
+    tokenizer_name: str = "t5-base",
     max_input_length: int = 1024
 ):
     """
@@ -28,7 +28,7 @@ def preprocess_data(
         output_path (str, optional): Path to save the processed JSONL data. If None,
                                      the data is not saved. Defaults to None.
         tokenizer_name (str, optional): Identifier for the pretrained tokenizer from
-                                        Hugging Face Hub. Defaults to "t5-small".
+                                        Hugging Face Hub. Defaults to "t5-base".
         max_input_length (int, optional): The maximum number of tokens for the input
                                           judgment text. Defaults to 1024.
     """
