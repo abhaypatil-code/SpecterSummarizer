@@ -9,3 +9,5 @@ rouge_score
 optuna
 nltk
 accelerate
+sentencepiece
+protobuf
