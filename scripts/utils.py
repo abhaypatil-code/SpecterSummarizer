@@ -4,7 +4,8 @@ from typing import List, Dict
 def load_jsonl(file_path: str) -> List[Dict]:
     """Load JSONL file into list of dictionaries."""
     data = []
-    with open(file_path, 'r', encoding='utf-8') as f:
+    # The encoding is changed to 'utf-8-sig' to handle the BOM character
+    with open(file_path, 'r', encoding='utf-8-sig') as f:
         for line in f:
             data.append(json.loads(line.strip()))
     return data

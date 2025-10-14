@@ -74,12 +74,18 @@ def train_model(
     train_dataset = prepare_dataset(train_file, tokenizer)
     print(f"✅ Loaded {len(train_dataset)} training examples\n")
     
-    # Training arguments
+    # In scripts/train.py, find the Seq2SeqTrainingArguments section
+
+# Training arguments
     training_args = Seq2SeqTrainingArguments(
         output_dir=output_dir,
         num_train_epochs=epochs,
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=batch_size,
+    
+    # ADD THIS LINE
+        gradient_accumulation_steps=2,
+
         warmup_steps=warmup_steps,
         learning_rate=learning_rate,
         weight_decay=0.01,
@@ -89,8 +95,7 @@ def train_model(
         save_total_limit=2,
         predict_with_generate=True,
         fp16=torch.cuda.is_available(),
-        report_to="none",
-        push_to_hub=False
+        report_to="none"
     )
     
     # Data collator

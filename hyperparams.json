@@ -1,6 +1,7 @@
 {
-    "learning_rate": 3e-05,
-    "batch_size": 8,
-    "num_epochs": 3,
+    "model_name": "t5-small",
+    "learning_rate": 5e-05,
+    "batch_size": 4,
+    "num_epochs": 2,
     "max_length": 512
 }

@@ -6,3 +6,5 @@ tqdm
 sacrebleu
 rouge_score
 protobuf
+sentencepiece
+accelerate
