@@ -21,26 +21,20 @@ def prepare_dataset(
     file_path: str,
     tokenizer,
     max_input_length: int = 1024,
-    max_target_length: int = 256
+    max_target_length: int = 512  # Consistent default
 ) -> Dataset:
     """
     Loads data from a JSONL file, tokenizes it, and converts it into a Hugging Face Dataset object.
-    
-    Args:
-        file_path (str): The path to the input JSONL file.
-        tokenizer: The tokenizer to use for processing text.
-        max_input_length (int): The maximum length for input sequences.
-        max_target_length (int): The maximum length for target (summary) sequences.
-
-    Returns:
-        Dataset: A Hugging Face Dataset object ready for training.
     """
     data = list(load_jsonl(file_path))
     
-    # --- FIX APPLIED: Filter out empty summaries ---
-    # This prevents training on examples that would cause NaN loss.
     original_size = len(data)
-    data = [d for d in data if d['summary'] and d['summary'].strip()]
+    data = [d for d in data if d.get('summary') and d['summary'].strip()]
+    
+    # --- FIX APPLIED: Empty Dataset Handling ---
+    if not data:
+        raise ValueError(f"The dataset at {file_path} is empty after filtering out invalid examples.")
+
     if len(data) < original_size:
         logger.warning(f"Removed {original_size - len(data)} examples with empty summaries from {file_path}")
 
@@ -102,11 +96,7 @@ def train_model(
         weight_decay=weight_decay,
         gradient_accumulation_steps=gradient_accumulation_steps,
         max_grad_norm=1.0,
-
-        # --- FIX APPLIED: Added generation_max_length ---
-        # Ensures validation summaries are not truncated, providing accurate metrics.
         generation_max_length=max_target_length,
-
         eval_strategy="epoch",
         save_strategy="epoch",
         save_total_limit=2,
@@ -139,8 +129,6 @@ def train_model(
     print(f"   - Batch Size: {batch_size}")
     print(f"   - Learning Rate: {learning_rate}")
     
-    # --- FIX APPLIED: Checkpoint Resume Logic ---
-    # Automatically resumes from the last checkpoint if available.
     if resume_from_checkpoint:
         print(f"🔄 Resuming training from checkpoint: {resume_from_checkpoint}")
     
@@ -162,17 +150,16 @@ def main():
     parser.add_argument("--output_dir", type=str, default="outputs/t5_summarizer", help="Directory where the final model and checkpoints will be saved.")
     parser.add_argument("--hyperparams", type=str, default="hyperparams.json", help="Path to a JSON file containing hyperparameters.")
     parser.add_argument("--max_input_length", type=int, default=1024, help="Maximum token length for input judgments.")
-    parser.add_argument("--max_target_length", type=int, default=256, help="Maximum token length for generated summaries.")
-    
-    # --- FIX APPLIED: Argument for resuming from a specific checkpoint ---
+    # --- FIX APPLIED: Consistent Length Parameter ---
+    parser.add_argument("--max_target_length", type=int, default=512, help="Maximum token length for generated summaries.")
     parser.add_argument("--resume_from_checkpoint", type=str, default=None, help="Path to a specific checkpoint to resume training from.")
     
     args = parser.parse_args()
-
-    # --- FIX APPLIED: Logic to auto-detect the last checkpoint ---
+    
     resume_from_checkpoint = args.resume_from_checkpoint
     if not resume_from_checkpoint and os.path.isdir(args.output_dir):
-        last_checkpoint = Seq2SeqTrainingArguments.get_last_checkpoint(args.output_dir)
+        from transformers.trainer_utils import get_last_checkpoint
+        last_checkpoint = get_last_checkpoint(args.output_dir)
         if last_checkpoint:
             print(f"✅ Automatically detected last checkpoint: {last_checkpoint}")
             resume_from_checkpoint = last_checkpoint

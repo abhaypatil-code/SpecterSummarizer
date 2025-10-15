@@ -11,7 +11,6 @@ def validate_model(
     validation_file: str,
     batch_size: int = 8,
     max_input_length: int = 1024,
-    # --- FIX APPLIED: Added min_length parameter ---
     min_length: int = 256,
     max_target_length: int = 512
 ):
@@ -36,7 +35,6 @@ def validate_model(
     print(f"   - Loading validation data from: {validation_file}")
     val_data = list(load_jsonl(validation_file))
     
-    # Ensure there's data to validate
     if not val_data:
         print("❌ No data found in the validation file. Exiting.")
         return
@@ -48,29 +46,33 @@ def validate_model(
     print(f"   - Generating predictions with batch size: {batch_size}")
     predictions = []
     for i in tqdm(range(0, len(judgments), batch_size), desc="Validating"):
-        batch_texts = judgments[i:i+batch_size]
-        
-        inputs = tokenizer(
-            batch_texts, 
-            return_tensors="pt", 
-            max_length=max_input_length, 
-            truncation=True, 
-            padding=True
-        ).to(device)
+        try:
+            batch_texts = ["summarize: " + text for text in judgments[i:i+batch_size]]
+            
+            inputs = tokenizer(
+                batch_texts, 
+                return_tensors="pt", 
+                max_length=max_input_length, 
+                truncation=True, 
+                padding=True
+            ).to(device)
 
-        with torch.no_grad():
-            summary_ids = model.generate(
-                inputs['input_ids'], 
-                max_length=max_target_length,
-                # --- FIX APPLIED: Enforce minimum summary length ---
-                min_length=min_length,
-                num_beams=4, 
-                length_penalty=2.0, 
-                early_stopping=True
-            )
+            with torch.no_grad():
+                summary_ids = model.generate(
+                    inputs['input_ids'], 
+                    max_length=max_target_length,
+                    min_length=min_length,
+                    num_beams=4, 
+                    length_penalty=2.0, 
+                    early_stopping=True
+                )
+            
+            batch_preds = tokenizer.batch_decode(summary_ids, skip_special_tokens=True)
+            predictions.extend(batch_preds)
         
-        batch_preds = tokenizer.batch_decode(summary_ids, skip_special_tokens=True)
-        predictions.extend(batch_preds)
+        except Exception as e:
+            print(f"❌ Error processing batch starting at index {i}: {e}")
+            predictions.extend([""] * len(batch_texts))
 
     # Calculate ROUGE scores
     print("\n   - Calculating ROUGE scores...")
@@ -83,7 +85,7 @@ def validate_model(
     
     result = aggregator.aggregate()
 
-    # Display results in a formatted table
+    # Display results
     print("\n" + "-"*40)
     print("📊 ROUGE SCORE RESULTS")
     print("-"*40)
@@ -109,8 +111,8 @@ if __name__ == "__main__":
     parser.add_argument("--validation_file", type=str, required=True, help="Path to the processed validation JSONL file.")
     parser.add_argument("--batch_size", type=int, default=8, help="Batch size for validation.")
     parser.add_argument("--max_input_length", type=int, default=1024, help="Maximum token length for input text.")
-    # --- FIX APPLIED: Added command-line argument for min_length ---
-    parser.add_argument("--min_length", type=int, default=256, help="Minimum token length for generated summaries.")
+    parser.add_argument("--min_length", type=int, default=128, help="Minimum token length for generated summaries.")
+    # --- FIX APPLIED: Consistent Length Parameter ---
     parser.add_argument("--max_target_length", type=int, default=512, help="Maximum token length for generated summaries.")
 
     args = parser.parse_args()

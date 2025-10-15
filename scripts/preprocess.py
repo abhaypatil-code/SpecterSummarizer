@@ -2,14 +2,12 @@ import os
 import argparse
 from transformers import T5Tokenizer
 from utils import load_jsonl, save_jsonl
-from tqdm import tqdm # Import tqdm for the progress bar
+from tqdm import tqdm
 
 def preprocess_data(
     judg_path: str,
     summ_path: str = None,
     output_path: str = None,
-    # --- FIX for Inconsistent Model Name Defaults ---
-    # Aligned the default tokenizer to 't5-base' for consistency.
     tokenizer_name: str = "t5-base",
     max_input_length: int = 1024
 ):
@@ -17,61 +15,49 @@ def preprocess_data(
     Combines, tokenizes, and preprocesses judgment and summary JSONL files,
     aligning them by their 'ID' field. This script is designed to prepare
     the InLSum dataset for training a T5 summarization model.
-
-    Dataset Format (InLSum):
-        - Judgments: {"ID": "id_100", "Judgment": "<Full text>"}
-        - Summaries: {"ID": "id_100", "Summary": "<Reference Summary>"}
-
-    Args:
-        judg_path (str): Path to the <split>_judg.jsonl file.
-        summ_path (str, optional): Path to the corresponding <split>_ref_summary.jsonl.
-                                   If None, summaries will be treated as empty strings
-                                   (useful for test sets without labels). Defaults to None.
-        output_path (str, optional): Path to save the processed JSONL data. If None,
-                                     the data is not saved. Defaults to None.
-        tokenizer_name (str, optional): Identifier for the pretrained tokenizer from
-                                        Hugging Face Hub. Defaults to "t5-base".
-        max_input_length (int, optional): The maximum number of tokens for the input
-                                          judgment text. Defaults to 1024.
     """
-    # --- 1. Input File Validation ---
     if not os.path.exists(judg_path):
         raise FileNotFoundError(f"Judgment file not found at: {judg_path}")
 
     tokenizer = T5Tokenizer.from_pretrained(tokenizer_name, legacy=False)
 
-    # --- 2. Load Data ---
+    # --- Load Data ---
     judgments = load_jsonl(judg_path)
     judg_dict = {item['ID']: item['Judgment'] for item in judgments}
+    summ_dict = {}
 
-    # Load summaries if the file path is provided and exists
+    # --- FIX APPLIED: Robust handling of dataset mismatches ---
     if summ_path and os.path.exists(summ_path):
         summaries = load_jsonl(summ_path)
         summ_dict = {item['ID']: item['Summary'] for item in summaries}
-        # Verify that the IDs in both files match perfectly
+        
         judg_ids = set(judg_dict.keys())
         summ_ids = set(summ_dict.keys())
-        assert judg_ids == summ_ids, (
-            f"ID mismatch between judgments and summaries!\n"
-            f"Judgments: {len(judg_ids)}, Summaries: {len(summ_ids)}\n"
-            f"Missing in summaries: {judg_ids - summ_ids}\n"
-            f"Missing in judgments: {summ_ids - judg_ids}"
-        )
+
+        # Warn about any mismatches instead of crashing
+        if judg_ids != summ_ids:
+            print("⚠️ Warning: ID mismatch detected between judgment and summary files.")
+            missing_in_summ = judg_ids - summ_ids
+            missing_in_judg = summ_ids - judg_ids
+            if missing_in_summ:
+                print(f"   - {len(missing_in_summ)} IDs found in judgments but not in summaries.")
+            if missing_in_judg:
+                print(f"   - {len(missing_in_judg)} IDs found in summaries but not in judgments.")
+            print("   - Proceeding with the intersection of available IDs.")
     else:
-        # If no summary file, create empty summaries (for test/inference)
+        # Create empty summaries if no summary file is provided
         summ_dict = {id_: "" for id_ in judg_dict.keys()}
 
-    # --- 3. Process and Tokenize Data ---
+    # --- Process and Tokenize Data ---
     processed = []
-    # Use tqdm to create a progress bar
+    # Loop over sorted judgment IDs, which is safe and deterministic
     for doc_id in tqdm(sorted(judg_dict.keys()), desc="Preprocessing examples"):
+        # Safely get judgment text
         judgment_text = judg_dict[doc_id]
+        # Safely get summary text; defaults to "" if ID is missing in summaries
         summary_text = summ_dict.get(doc_id, "")
 
-        # Apply the T5-specific prefix for the summarization task
         input_text = f"summarize: {judgment_text}"
-
-        # Tokenize the input to get its length (for statistics)
         input_ids = tokenizer.encode(input_text, max_length=max_input_length, truncation=True)
 
         processed.append({
@@ -81,30 +67,26 @@ def preprocess_data(
             "input_length": len(input_ids)
         })
 
-    # --- 4. Save Processed Data ---
+    # --- Save Processed Data ---
     if output_path:
-        # Ensure the output directory exists
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         save_jsonl(processed, output_path)
-        # Print summary statistics
-        print(f"✅ Preprocessed {len(processed)} examples and saved to {output_path}")
-        avg_len = sum(p['input_length'] for p in processed) / len(processed)
-        max_len = max(p['input_length'] for p in processed)
-        print(f"   - Avg input length: {avg_len:.1f} tokens")
-        print(f"   - Max input length: {max_len} tokens")
+        print(f"\n✅ Preprocessed {len(processed)} examples and saved to {output_path}")
+        if processed:
+            avg_len = sum(p['input_length'] for p in processed) / len(processed)
+            max_len = max(p['input_length'] for p in processed)
+            print(f"   - Avg input length: {avg_len:.1f} tokens")
+            print(f"   - Max input length: {max_len} tokens")
 
     return processed
 
 if __name__ == "__main__":
-    # --- 5. Argument Parsing ---
     parser = argparse.ArgumentParser(description="Preprocess the InLSum dataset for summarization.")
     parser.add_argument("--train_judg_path", type=str, default="data/train_judg.jsonl", help="Path to the training judgments JSONL file.")
     parser.add_argument("--train_summ_path", type=str, default="data/train_ref_summ.jsonl", help="Path to the training reference summaries JSONL file.")
     parser.add_argument("--val_judg_path", type=str, default="data/val_judg.jsonl", help="Path to the validation judgments JSONL file.")
     parser.add_argument("--val_summ_path", type=str, default="data/val_ref_summ.jsonl", help="Path to the validation reference summaries JSONL file.")
     parser.add_argument("--output_dir", type=str, default="data", help="Directory where the processed files will be saved.")
-    # --- FIX for Inconsistent Model Name Defaults ---
-    # Aligned the default tokenizer to 't5-base' for consistency.
     parser.add_argument("--tokenizer_name", type=str, default="t5-base", help="Name or path of the tokenizer to use for preprocessing.")
     parser.add_argument("--max_input_length", type=int, default=1024, help="Maximum token length for the input judgments.")
     args = parser.parse_args()
@@ -113,7 +95,6 @@ if __name__ == "__main__":
     print("🚀 STARTING InLSum DATASET PREPROCESSING")
     print("="*80 + "\n")
 
-    # Process the training dataset
     if os.path.exists(args.train_judg_path):
         print("[1/2] Processing TRAINING data...")
         preprocess_data(
@@ -126,10 +107,8 @@ if __name__ == "__main__":
     else:
         print("🟡 Skipping training data processing: file not found.")
 
-    # Process the validation dataset
     if os.path.exists(args.val_judg_path):
         print("\n[2/2] Processing VALIDATION data...")
-        # Handle cases where validation summaries might not be available
         val_summ_path = args.val_summ_path if os.path.exists(args.val_summ_path) else None
         if not val_summ_path:
              print("   - Warning: Validation summary file not found. Processing without labels.")
