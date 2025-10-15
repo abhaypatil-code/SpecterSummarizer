@@ -11,8 +11,8 @@ def validate_model(
     validation_file: str,
     batch_size: int = 8,
     max_input_length: int = 1024,
-    min_length: int = 256,
-    max_target_length: int = 512
+    min_length: int = 400,
+    max_target_length: int = 600
 ):
     """
     Validates a fine-tuned T5 model by generating summaries and calculating ROUGE scores.
@@ -111,9 +111,9 @@ if __name__ == "__main__":
     parser.add_argument("--validation_file", type=str, required=True, help="Path to the processed validation JSONL file.")
     parser.add_argument("--batch_size", type=int, default=8, help="Batch size for validation.")
     parser.add_argument("--max_input_length", type=int, default=1024, help="Maximum token length for input text.")
-    parser.add_argument("--min_length", type=int, default=128, help="Minimum token length for generated summaries.")
+    parser.add_argument("--min_length", type=int, default=400, help="Minimum token length for generated summaries.")
     # --- FIX APPLIED: Consistent Length Parameter ---
-    parser.add_argument("--max_target_length", type=int, default=512, help="Maximum token length for generated summaries.")
+    parser.add_argument("--max_target_length", type=int, default=600, help="Maximum token length for generated summaries.")
 
     args = parser.parse_args()
 
