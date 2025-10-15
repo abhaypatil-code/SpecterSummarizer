@@ -1,25 +1,23 @@
 import json
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Iterator
 
-def load_jsonl(file_path: str) -> List[Dict[str, Any]]:
+def load_jsonl(file_path: str) -> Iterator[Dict[str, Any]]:
     """
-    Loads a JSONL file into a list of dictionaries.
+    Loads a JSONL file line by line as a generator to save memory.
 
     Args:
         file_path (str): The path to the JSONL file.
 
-    Returns:
-        List[Dict[str, Any]]: A list of dictionaries, where each dictionary
+    Yields:
+        Iterator[Dict[str, Any]]: An iterator of dictionaries, where each dictionary
                                represents a line in the JSONL file.
     """
-    data = []
     # The encoding is changed to 'utf-8-sig' to handle the BOM character
     with open(file_path, 'r', encoding='utf-8-sig') as f:
         for line in f:
             # .strip() handles leading/trailing whitespace and blank lines
             if line.strip():
-                data.append(json.loads(line.strip()))
-    return data
+                yield json.loads(line.strip())
 
 def save_jsonl(data: List[Dict[str, Any]], file_path: str) -> None:
     """

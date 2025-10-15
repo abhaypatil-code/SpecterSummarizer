@@ -1,102 +1,125 @@
-import os
 import argparse
-from transformers import T5ForConditionalGeneration, T5Tokenizer
 import torch
+from transformers import T5ForConditionalGeneration, T5Tokenizer
 from utils import load_jsonl
+from tqdm import tqdm
+from rouge_score import rouge_scorer, scoring
+import pandas as pd
 
-def validate_manually(
+def validate_model(
     model_path: str,
-    # --- FIX for Hardcoded Tokenizer Length ---
-    # Added 'max_input_length' to parameterize the tokenizer length.
+    validation_file: str,
+    batch_size: int = 8,
     max_input_length: int = 1024,
-    max_output_length: int = 256,
-    num_beams: int = 4
+    # --- FIX APPLIED: Added min_length parameter ---
+    min_length: int = 256,
+    max_target_length: int = 512
 ):
     """
-    Allows for manual, interactive validation of the fine-tuned T5 model.
-    You can paste a legal judgment, and the model will generate a summary.
+    Validates a fine-tuned T5 model by generating summaries and calculating ROUGE scores.
     """
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
-
-    # --- 1. Load Model and Tokenizer ---
-    try:
-        tokenizer = T5Tokenizer.from_pretrained(model_path, legacy=False)
-        model = T5ForConditionalGeneration.from_pretrained(model_path).to(device)
-        model.eval()
-    except OSError:
-        print(f"❌ ERROR: Model or tokenizer not found at '{model_path}'.")
-        print("   - Did you run the training script to fine-tune a model?")
-        return
-
     print("\n" + "="*80)
-    print("⚖️ MANUAL MODEL VALIDATION")
-    print("="*80)
-    print("   - Enter a legal judgment text below.")
-    print("   - Type 'exit' or 'quit' to end the session.")
+    print(f"🚀 STARTING VALIDATION SCRIPT")
     print("="*80 + "\n")
 
-    # --- 2. Interactive Loop ---
-    while True:
-        try:
-            judgment_text = input("Enter Judgment Text >> ")
-            if judgment_text.lower() in ["exit", "quit"]:
-                break
-            if not judgment_text.strip():
-                print("   - Please enter some text.")
-                continue
+    # Setup device
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"   - Using device: {device}")
 
-            # --- 3. Preprocess and Generate ---
-            # Apply the same "summarize: " prefix used during training
-            input_text = f"summarize: {judgment_text}"
+    # Load tokenizer and model
+    print(f"   - Loading model from: {model_path}")
+    tokenizer = T5Tokenizer.from_pretrained(model_path, legacy=False)
+    model = T5ForConditionalGeneration.from_pretrained(model_path).to(device)
+    model.eval()
 
-            inputs = tokenizer(
-                input_text,
-                return_tensors="pt",
-                padding=True,
-                truncation=True,
-                # --- FIX for Hardcoded Tokenizer Length ---
-                # Use the parameterized 'max_input_length'.
-                max_length=max_input_length
-            ).to(device)
+    # Load validation data
+    print(f"   - Loading validation data from: {validation_file}")
+    val_data = list(load_jsonl(validation_file))
+    
+    # Ensure there's data to validate
+    if not val_data:
+        print("❌ No data found in the validation file. Exiting.")
+        return
 
-            with torch.no_grad():
-                summary_ids = model.generate(
-                    inputs.input_ids,
-                    max_length=max_output_length,
-                    num_beams=num_beams,
-                    early_stopping=True
-                )
-            
-            summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
+    judgments = [d['judgment_text'] for d in val_data]
+    references = [d['summary'] for d in val_data]
 
-            # --- 4. Display Results ---
-            print("\n" + "-"*80)
-            print("GENERATED SUMMARY:")
-            print(summary)
-            print("-"*80 + "\n")
+    # Generate predictions
+    print(f"   - Generating predictions with batch size: {batch_size}")
+    predictions = []
+    for i in tqdm(range(0, len(judgments), batch_size), desc="Validating"):
+        batch_texts = judgments[i:i+batch_size]
+        
+        inputs = tokenizer(
+            batch_texts, 
+            return_tensors="pt", 
+            max_length=max_input_length, 
+            truncation=True, 
+            padding=True
+        ).to(device)
 
-        except KeyboardInterrupt:
-            break
-        except Exception as e:
-            print(f"\n❌ An error occurred: {e}")
-            break
-            
-    print("\n👋 Exiting validation session.")
+        with torch.no_grad():
+            summary_ids = model.generate(
+                inputs['input_ids'], 
+                max_length=max_target_length,
+                # --- FIX APPLIED: Enforce minimum summary length ---
+                min_length=min_length,
+                num_beams=4, 
+                length_penalty=2.0, 
+                early_stopping=True
+            )
+        
+        batch_preds = tokenizer.batch_decode(summary_ids, skip_special_tokens=True)
+        predictions.extend(batch_preds)
+
+    # Calculate ROUGE scores
+    print("\n   - Calculating ROUGE scores...")
+    scorer = rouge_scorer.RougeScorer(['rouge1', 'rouge2', 'rougeL'], use_stemmer=True)
+    aggregator = scoring.BootstrapAggregator()
+
+    for pred, ref in zip(predictions, references):
+        scores = scorer.score(ref, pred)
+        aggregator.add_scores(scores)
+    
+    result = aggregator.aggregate()
+
+    # Display results in a formatted table
+    print("\n" + "-"*40)
+    print("📊 ROUGE SCORE RESULTS")
+    print("-"*40)
+    
+    results_df = pd.DataFrame({
+        "Metric": ["ROUGE-1", "ROUGE-2", "ROUGE-L"],
+        "Precision": [result['rouge1'].mid.precision, result['rouge2'].mid.precision, result['rougeL'].mid.precision],
+        "Recall": [result['rouge1'].mid.recall, result['rouge2'].mid.recall, result['rougeL'].mid.recall],
+        "F1-Score": [result['rouge1'].mid.fmeasure, result['rouge2'].mid.fmeasure, result['rougeL'].mid.fmeasure]
+    })
+    
+    print(results_df.to_string(index=False))
+    print("-"*40)
+
+    print("\n" + "="*80)
+    print("🎉 VALIDATION COMPLETE")
+    print("="*80 + "\n")
+
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Manually validate the summarization model.")
-    parser.add_argument("--model_path", type=str, default="outputs/t5_summarizer", help="Path to the fine-tuned model directory.")
-    # --- FIX for Hardcoded Tokenizer Length ---
-    # Add the argument to control max input length during validation.
-    parser.add_argument("--max_input_length", type=int, default=1024, help="Maximum token length for the input judgment, aligned with preprocessing.")
-    parser.add_argument("--max_output_length", type=int, default=256, help="Maximum length for the generated summary.")
-    parser.add_argument("--num_beams", type=int, default=4, help="Number of beams for beam search.")
+    parser = argparse.ArgumentParser(description="Validate a fine-tuned T5 model.")
+    parser.add_argument("--model_path", type=str, required=True, help="Path to the fine-tuned model directory.")
+    parser.add_argument("--validation_file", type=str, required=True, help="Path to the processed validation JSONL file.")
+    parser.add_argument("--batch_size", type=int, default=8, help="Batch size for validation.")
+    parser.add_argument("--max_input_length", type=int, default=1024, help="Maximum token length for input text.")
+    # --- FIX APPLIED: Added command-line argument for min_length ---
+    parser.add_argument("--min_length", type=int, default=256, help="Minimum token length for generated summaries.")
+    parser.add_argument("--max_target_length", type=int, default=512, help="Maximum token length for generated summaries.")
+
     args = parser.parse_args()
 
-    validate_manually(
+    validate_model(
         model_path=args.model_path,
+        validation_file=args.validation_file,
+        batch_size=args.batch_size,
         max_input_length=args.max_input_length,
-        max_output_length=args.max_output_length,
-        num_beams=args.num_beams
+        min_length=args.min_length,
+        max_target_length=args.max_target_length
     )

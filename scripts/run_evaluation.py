@@ -1,161 +1,102 @@
-import os
 import argparse
-from transformers import T5ForConditionalGeneration, T5Tokenizer
-from evaluate import load
-from utils import load_jsonl, save_predictions, save_jsonl
 import torch
+from transformers import T5ForConditionalGeneration, T5Tokenizer
+from utils import load_jsonl, save_jsonl, save_predictions
 from tqdm import tqdm
 
-def generate_summaries(
+def run_evaluation(
     model_path: str,
     input_file: str,
     output_file: str,
-    max_length: int = 256,
-    num_beams: int = 4,
-    length_penalty: float = 2.0,
-    batch_size: int = 8
+    batch_size: int = 8,
+    max_input_length: int = 1024,
+    # --- FIX APPLIED: Added min_length parameter ---
+    min_length: int = 256,
+    max_target_length: int = 512
 ):
     """
-    Generates summaries for an input file using a fine-tuned T5 model
-    and saves them in the competition-required JSONL format with IDs.
+    Generates summaries for a given input file using a fine-tuned T5 model.
     """
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
+    print("\n" + "="*80)
+    print(f"🚀 STARTING EVALUATION SCRIPT")
+    print("="*80 + "\n")
 
-    tokenizer = T5Tokenizer.from_pretrained(model_path)
+    # Setup device
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"   - Using device: {device}")
+
+    # Load tokenizer and model
+    print(f"   - Loading model from: {model_path}")
+    tokenizer = T5Tokenizer.from_pretrained(model_path, legacy=False)
     model = T5ForConditionalGeneration.from_pretrained(model_path).to(device)
     model.eval()
 
-    data = load_jsonl(input_file)
-    # --- FIX for KeyError in Prediction Script ---
-    # Changed 'Judgement' to 'judgment_text' to match the preprocessed data.
-    documents = [item['judgment_text'] for item in data]
-    ids = [item['ID'] for item in data]
+    # Load and preprocess data
+    print(f"   - Loading data from: {input_file}")
+    data = list(load_jsonl(input_file))
+    
+    # Check if 'judgment_text' key exists, otherwise assume the raw text is provided
+    if 'judgment_text' not in data[0]:
+        texts = [d['judgment'] for d in data]
+    else:
+        texts = [d['judgment_text'] for d in data]
 
+    # Generate predictions in batches
+    print(f"   - Generating predictions with batch size: {batch_size}")
     predictions = []
-    print(f"\nGenerating summaries for {len(documents)} documents...")
-
-    for i in tqdm(range(0, len(documents), batch_size), desc="Generating"):
-        batch_texts = documents[i:i+batch_size]
+    for i in tqdm(range(0, len(texts), batch_size), desc="Generating Summaries"):
+        batch_texts = texts[i:i+batch_size]
+        
         inputs = tokenizer(
-            batch_texts,
-            return_tensors="pt",
-            padding=True,
-            truncation=True,
-            max_length=1024
+            batch_texts, 
+            return_tensors="pt", 
+            max_length=max_input_length, 
+            truncation=True, 
+            padding=True
         ).to(device)
 
         with torch.no_grad():
             summary_ids = model.generate(
-                inputs.input_ids,
-                max_length=max_length,
-                num_beams=num_beams,
-                length_penalty=length_penalty,
+                inputs['input_ids'], 
+                max_length=max_target_length, 
+                # --- FIX APPLIED: Enforce minimum summary length ---
+                min_length=min_length,
+                num_beams=4, 
+                length_penalty=2.0, 
                 early_stopping=True
             )
-        
+
         batch_preds = tokenizer.batch_decode(summary_ids, skip_special_tokens=True)
         predictions.extend(batch_preds)
+        
+    # Save the predictions
+    save_predictions(predictions, output_file)
+    print(f"\n✅ Successfully generated {len(predictions)} summaries and saved to {output_file}")
+    
+    print("\n" + "="*80)
+    print("🎉 EVALUATION COMPLETE")
+    print("="*80 + "\n")
 
-    os.makedirs(os.path.dirname(output_file), exist_ok=True)
-    
-    # Structure the predictions with their corresponding IDs
-    predictions_with_ids = [{"ID": id_, "Summary": pred} for id_, pred in zip(ids, predictions)]
-    
-    # Save the predictions to the specified output file in JSONL format
-    save_jsonl(predictions_with_ids, output_file)
-    print(f"\n✅ Saved {len(predictions)} summaries to: {output_file}")
-    
-    return predictions, ids
-
-def evaluate_summaries(predictions_file: str, references_file: str):
-    """
-    Calculates ROUGE-2, ROUGE-L, and BLEU scores by aligning predictions
-    and references using their IDs.
-    """
-    print(f"\n{'='*80}")
-    print(f"EVALUATING SUMMARIES")
-    print(f"{'='*80}\n")
-    
-    pred_data = load_jsonl(predictions_file)
-    ref_data = load_jsonl(references_file)
-    
-    # Create dictionaries for quick lookup by ID
-    pred_dict = {item['ID']: item['Summary'] for item in pred_data}
-    # --- FIX for KeyError in Evaluation Logic ---
-    # Changed 'Summary' to 'summary' to match the preprocessed data.
-    ref_dict = {item['ID']: item['summary'] for item in ref_data}
-    
-    common_ids = sorted(set(pred_dict.keys()) & set(ref_dict.keys()))
-    
-    if not common_ids:
-        print("❌ ERROR: No matching IDs found between predictions and references!")
-        return None
-    
-    # Align predictions and references based on common IDs
-    predictions = [pred_dict[id_] for id_ in common_ids]
-    references = [ref_dict[id_] for id_ in common_ids]
-    
-    print(f"📊 Evaluating {len(common_ids)} aligned examples...\n")
-    
-    # Load metrics
-    rouge = load("rouge")
-    bleu = load("sacrebleu")
-    
-    # Compute scores
-    rouge_results = rouge.compute(predictions=predictions, references=references, use_stemmer=True)
-    bleu_result = bleu.compute(predictions=predictions, references=[[r] for r in references])
-    
-    print(f"{'='*80}")
-    print(f"EVALUATION RESULTS")
-    print(f"{'='*80}")
-    print(f"  ROUGE-2:  {rouge_results['rouge2']:.4f}")
-    print(f"  ROUGE-L:  {rouge_results['rougeL']:.4f}")
-    print(f"  BLEU:     {bleu_result['score']:.4f}")
-    print(f"{'='*80}\n")
-    
-    return {
-        "rouge2": rouge_results['rouge2'],
-        "rougeL": rouge_results['rougeL'],
-        "bleu": bleu_result['score']
-    }
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Generate and evaluate summaries for the legal summarization task.")
-    parser.add_argument("--model_path", type=str, default="outputs/t5_summarizer", help="Path to the fine-tuned model directory.")
-    parser.add_argument("--input_file", type=str, default="data/val_processed.jsonl", help="Path to the processed input data (JSONL).")
+    parser = argparse.ArgumentParser(description="Generate summaries using a fine-tuned T5 model.")
+    parser.add_argument("--model_path", type=str, required=True, help="Path to the fine-tuned model directory.")
+    parser.add_argument("--input_file", type=str, required=True, help="Path to the input JSONL file for which to generate summaries.")
+    parser.add_argument("--output_file", type=str, required=True, help="Path to save the generated summaries.")
+    parser.add_argument("--batch_size", type=int, default=8, help="Batch size for generation.")
+    parser.add_argument("--max_input_length", type=int, default=1024, help="Maximum token length for input text.")
+    # --- FIX APPLIED: Added command-line argument for min_length ---
+    parser.add_argument("--min_length", type=int, default=256, help="Minimum token length for generated summaries.")
+    parser.add_argument("--max_target_length", type=int, default=512, help="Maximum token length for generated summaries.")
     
-    # --- FIX ---
-    # Changed the default output file name to 'answer.jsonl' for direct submission.
-    parser.add_argument(
-        "--output_file",
-        type=str,
-        default="outputs/predictions/answer.jsonl",
-        help="Path to save the generated summaries for submission."
-    )
-    # --- END FIX ---
-    
-    parser.add_argument("--references_file", type=str, default="data/val_processed.jsonl", help="Path to the reference summaries for local validation.")
-    parser.add_argument("--max_length", type=int, default=256, help="Maximum length for the generated summaries.")
-    parser.add_argument("--num_beams", type=int, default=4, help="Number of beams for beam search decoding.")
-    parser.add_argument("--length_penalty", type=float, default=2.0, help="Length penalty for generation.")
-    parser.add_argument("--batch_size", type=int, default=8, help="Batch size for inference.")
     args = parser.parse_args()
 
-    # Step 1: Generate summaries from the model
-    generate_summaries(
+    run_evaluation(
         model_path=args.model_path,
         input_file=args.input_file,
         output_file=args.output_file,
-        max_length=args.max_length,
-        num_beams=args.num_beams,
-        length_penalty=args.length_penalty,
-        batch_size=args.batch_size
+        batch_size=args.batch_size,
+        max_input_length=args.max_input_length,
+        min_length=args.min_length,
+        max_target_length=args.max_target_length
     )
-    
-    # Step 2: Evaluate the summaries if a reference file is provided
-    if args.references_file and os.path.exists(args.references_file):
-        evaluate_summaries(
-            predictions_file=args.output_file, # Directly use the output file
-            references_file=args.references_file
-        )
