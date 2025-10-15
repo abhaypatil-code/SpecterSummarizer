@@ -1,8 +1,10 @@
+
+
 transformers
 datasets
 evaluate
-torch
-torchvision
+torch --index-url https://download.pytorch.org/whl/cu118
+torchvision 
 torchaudio
 tqdm
 scikit-learn
