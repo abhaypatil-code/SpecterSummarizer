@@ -77,8 +77,7 @@ def train_model(
     gradient_accumulation_steps: int,
     max_input_length: int,
     max_target_length: int,
-    resume_from_checkpoint: str = None,
-    val_split: float = 0.1
+    resume_from_checkpoint: str = None
 ):
     """
     Sets up and runs the training process for the T5 summarization model.
@@ -90,67 +89,30 @@ def train_model(
     tokenizer = T5Tokenizer.from_pretrained(model_name, legacy=False)
     model = T5ForConditionalGeneration.from_pretrained(model_name)
     
-    # --- FIX: Handle missing or empty validation file ---
-    val_exists = os.path.exists(val_file)
-    val_is_empty = False
+    # Load datasets
+    print(f"📂 Loading datasets...")
+    print(f"   - Training data: {train_file}")
+    print(f"   - Validation data: {val_file}")
     
-    if val_exists:
-        try:
-            val_data = list(load_jsonl(val_file))
-            val_is_empty = len([d for d in val_data if d.get('summary') and d['summary'].strip()]) == 0
-        except:
-            val_is_empty = True
+    if not os.path.exists(train_file):
+        raise FileNotFoundError(f"Training file not found: {train_file}")
     
-    if not val_exists or val_is_empty:
-        print(f"⚠️ WARNING: Validation file '{val_file}' is missing or empty.")
-        print(f"📊 Creating {int(val_split*100)}% validation split from training data...\n")
-        
-        # Load all training data
-        print(f"📂 Loading training data from '{train_file}'...")
-        all_data = list(load_jsonl(train_file))
-        all_data = [d for d in all_data if d.get('summary') and d['summary'].strip()]
-        
-        if not all_data:
-            raise ValueError(f"Training file '{train_file}' has no valid data!")
-        
-        # Split the data
-        split_idx = int(len(all_data) * (1 - val_split))
-        train_data = all_data[:split_idx]
-        val_data = all_data[split_idx:]
-        
-        print(f"✅ Split created: {len(train_data)} training, {len(val_data)} validation examples")
-        
-        # Create datasets directly from split data
-        train_judgments = [d['judgment_text'] for d in train_data]
-        train_summaries = [d['summary'] for d in train_data]
-        val_judgments = [d['judgment_text'] for d in val_data]
-        val_summaries = [d['summary'] for d in val_data]
-        
-        # Tokenize training data
-        train_inputs = tokenizer(train_judgments, max_length=max_input_length, truncation=True)
-        train_labels = tokenizer(train_summaries, max_length=max_target_length, truncation=True)
-        train_inputs['labels'] = train_labels['input_ids']
-        train_dataset = Dataset.from_dict(train_inputs)
-        
-        # Tokenize validation data
-        val_inputs = tokenizer(val_judgments, max_length=max_input_length, truncation=True)
-        val_labels = tokenizer(val_summaries, max_length=max_target_length, truncation=True)
-        val_inputs['labels'] = val_labels['input_ids']
-        val_dataset = Dataset.from_dict(val_inputs)
-        
-    else:
-        print(f"📂 Loading and preparing datasets from '{train_file}' and '{val_file}'...")
-        train_dataset = prepare_dataset(train_file, tokenizer, max_input_length, max_target_length)
-        val_dataset = prepare_dataset(val_file, tokenizer, max_input_length, max_target_length)
+    if not os.path.exists(val_file):
+        raise FileNotFoundError(f"Validation file not found: {val_file}")
     
-    print(f"✅ Datasets prepared: {len(train_dataset)} training examples, {len(val_dataset)} validation examples.\n")
+    train_dataset = prepare_dataset(train_file, tokenizer, max_input_length, max_target_length)
+    val_dataset = prepare_dataset(val_file, tokenizer, max_input_length, max_target_length)
     
-    # --- BUG FIX: Dynamically check and adjust warmup steps ---
+    print(f"✅ Datasets loaded successfully!")
+    print(f"   - Training examples: {len(train_dataset)}")
+    print(f"   - Validation examples: {len(val_dataset)}\n")
+    
+    # Dynamically check and adjust warmup steps
     total_training_steps = (len(train_dataset) // (batch_size * gradient_accumulation_steps)) * epochs
     if warmup_steps >= total_training_steps:
         original_warmup_steps = warmup_steps
         warmup_steps = math.ceil(total_training_steps * 0.1)
-        print(f"⚠️ WARNING: Provided warmup_steps ({original_warmup_steps}) is >= total training steps ({total_training_steps}).")
+        print(f"⚠️  WARNING: Provided warmup_steps ({original_warmup_steps}) is >= total training steps ({total_training_steps}).")
         print(f"   Adjusting warmup_steps to {warmup_steps} (10% of total steps).\n")
     
     training_args = Seq2SeqTrainingArguments(
@@ -192,13 +154,19 @@ def train_model(
     
     print(f"💪 Training commencing...")
     print(f"   Device: {'GPU (CUDA)' if torch.cuda.is_available() else 'CPU'}")
+    print(f"   Model: {model_name}")
     print(f"   Epochs: {epochs}")
     print(f"   Batch Size: {batch_size}")
+    print(f"   Gradient Accumulation Steps: {gradient_accumulation_steps}")
+    print(f"   Effective Batch Size: {batch_size * gradient_accumulation_steps}")
     print(f"   Learning Rate: {learning_rate}")
-    print(f"   FP16: {torch.cuda.is_available()}\n")
+    print(f"   Warmup Steps: {warmup_steps}")
+    print(f"   Weight Decay: {weight_decay}")
+    print(f"   FP16: {torch.cuda.is_available()}")
+    print(f"   Total Training Steps: {total_training_steps}\n")
     
     if resume_from_checkpoint:
-        print(f"🔄 Resuming training from checkpoint: {resume_from_checkpoint}")
+        print(f"🔄 Resuming training from checkpoint: {resume_from_checkpoint}\n")
     
     trainer.train(resume_from_checkpoint=resume_from_checkpoint)
     
@@ -207,8 +175,28 @@ def train_model(
     trainer.save_model(output_dir)
     tokenizer.save_pretrained(output_dir)
     
+    # Save training summary
+    summary_path = os.path.join(output_dir, 'training_summary.json')
+    training_summary = {
+        "model_name": model_name,
+        "train_examples": len(train_dataset),
+        "val_examples": len(val_dataset),
+        "epochs": epochs,
+        "batch_size": batch_size,
+        "learning_rate": learning_rate,
+        "warmup_steps": warmup_steps,
+        "weight_decay": weight_decay,
+        "gradient_accumulation_steps": gradient_accumulation_steps,
+        "total_training_steps": total_training_steps
+    }
+    
+    with open(summary_path, 'w') as f:
+        json.dump(training_summary, f, indent=2)
+    
+    print(f"📊 Training summary saved to: {summary_path}")
+    
     print("\n" + "="*80)
-    print("🎉 Model training finished successfully!")
+    print("🎉 MODEL TRAINING FINISHED SUCCESSFULLY!")
     print("="*80 + "\n")
 
 def main():
@@ -227,8 +215,6 @@ def main():
                         help="Maximum token length for generated summaries.")
     parser.add_argument("--resume_from_checkpoint", type=str, default=None, 
                         help="Path to a specific checkpoint to resume training from.")
-    parser.add_argument("--val_split", type=float, default=0.1,
-                        help="Validation split ratio if validation file is missing (default: 0.1 = 10%)")
     
     args = parser.parse_args()
     
@@ -245,7 +231,7 @@ def main():
             hyperparams = json.load(f)
         print(f"✅ Successfully loaded hyperparameters from '{args.hyperparams}'.")
     except FileNotFoundError:
-        print(f"⚠️ WARNING: Hyperparameter file not found at '{args.hyperparams}'. Using default values.")
+        print(f"⚠️  WARNING: Hyperparameter file not found at '{args.hyperparams}'. Using default values.")
         hyperparams = {}
     except json.JSONDecodeError:
         print(f"❌ ERROR: Could not decode JSON from '{args.hyperparams}'. Check for syntax errors. Using default values.")
@@ -264,8 +250,7 @@ def main():
         gradient_accumulation_steps=hyperparams.get("gradient_accumulation_steps", 2),
         max_input_length=args.max_input_length,
         max_target_length=args.max_target_length,
-        resume_from_checkpoint=resume_from_checkpoint,
-        val_split=args.val_split
+        resume_from_checkpoint=resume_from_checkpoint
     )
 
 if __name__ == "__main__":
