@@ -22,16 +22,15 @@ def preprocess_and_split_data(
     """
     if not os.path.exists(judg_path):
         raise FileNotFoundError(f"Judgment file not found at: {judg_path}")
-    
     if not os.path.exists(summ_path):
         raise FileNotFoundError(f"Summary file not found at: {summ_path}")
-
+    
     # Validate split ratios
     if abs(train_ratio + val_ratio + test_ratio - 1.0) > 1e-6:
         raise ValueError(f"Split ratios must sum to 1.0. Got: {train_ratio + val_ratio + test_ratio}")
-
+    
     tokenizer = T5Tokenizer.from_pretrained(tokenizer_name, legacy=False)
-
+    
     print("\n" + "="*80)
     print("📂 LOADING DATA")
     print("="*80)
@@ -56,10 +55,9 @@ def preprocess_and_split_data(
         if missing_in_judg:
             print(f"   - {len(missing_in_judg)} IDs found in summaries but not in judgments.")
         print("   - Using only the intersection of IDs.")
-        
+    
     # Use only matching IDs
     common_ids = list(judg_ids & summ_ids)
-    
     if not common_ids:
         raise ValueError("No matching IDs found between judgment and summary files!")
     
@@ -81,11 +79,11 @@ def preprocess_and_split_data(
     print("="*80)
     print("📊 DATA SPLIT SUMMARY")
     print("="*80)
-    print(f"   Total examples: {total}")
-    print(f"   Training:   {len(train_ids)} ({len(train_ids)/total*100:.1f}%)")
-    print(f"   Validation: {len(val_ids)} ({len(val_ids)/total*100:.1f}%)")
-    print(f"   Test:       {len(test_ids)} ({len(test_ids)/total*100:.1f}%)")
-    print(f"   Random seed: {random_seed}\n")
+    print(f"  Total examples: {total}")
+    print(f"  Training: {len(train_ids)} ({len(train_ids)/total*100:.1f}%)")
+    print(f"  Validation: {len(val_ids)} ({len(val_ids)/total*100:.1f}%)")
+    print(f"  Test: {len(test_ids)} ({len(test_ids)/total*100:.1f}%)")
+    print(f"  Random seed: {random_seed}\n")
     
     # Process each split
     splits = {
@@ -120,9 +118,9 @@ def preprocess_and_split_data(
         if processed:
             avg_len = sum(p['input_length'] for p in processed) / len(processed)
             max_len = max(p['input_length'] for p in processed)
-            print(f"   ✅ Saved {len(processed)} examples to {output_path}")
-            print(f"      Avg input length: {avg_len:.1f} tokens")
-            print(f"      Max input length: {max_len} tokens\n")
+            print(f"  ✅ Saved {len(processed)} examples to {output_path}")
+            print(f"     Avg input length: {avg_len:.1f} tokens")
+            print(f"     Max input length: {max_len} tokens\n")
     
     print("="*80)
     print("✅ PREPROCESSING AND SPLIT COMPLETE")
@@ -130,26 +128,25 @@ def preprocess_and_split_data(
     
     return splits
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Preprocess and split the dataset with 80/10/10 ratio.")
-    parser.add_argument("--judg_path", type=str, default="data/train_judg.jsonl", 
+    parser.add_argument("--judg_path", type=str, default="data/train_judg.jsonl",
                         help="Path to the judgments JSONL file.")
-    parser.add_argument("--summ_path", type=str, default="data/train_ref_summ.jsonl", 
+    parser.add_argument("--summ_path", type=str, default="data/train_ref_summ.jsonl",
                         help="Path to the reference summaries JSONL file.")
-    parser.add_argument("--output_dir", type=str, default="data", 
+    parser.add_argument("--output_dir", type=str, default="data",
                         help="Directory where processed files will be saved.")
-    parser.add_argument("--tokenizer_name", type=str, default="t5-base", 
+    parser.add_argument("--tokenizer_name", type=str, default="t5-base",
                         help="Name or path of the tokenizer.")
-    parser.add_argument("--max_input_length", type=int, default=1024, 
+    parser.add_argument("--max_input_length", type=int, default=1024,
                         help="Maximum token length for input judgments.")
-    parser.add_argument("--train_ratio", type=float, default=0.8, 
+    parser.add_argument("--train_ratio", type=float, default=0.8,
                         help="Training set ratio (default: 0.8)")
-    parser.add_argument("--val_ratio", type=float, default=0.1, 
+    parser.add_argument("--val_ratio", type=float, default=0.1,
                         help="Validation set ratio (default: 0.1)")
-    parser.add_argument("--test_ratio", type=float, default=0.1, 
+    parser.add_argument("--test_ratio", type=float, default=0.1,
                         help="Test set ratio (default: 0.1)")
-    parser.add_argument("--random_seed", type=int, default=42, 
+    parser.add_argument("--random_seed", type=int, default=42,
                         help="Random seed for reproducible splits.")
     
     args = parser.parse_args()
