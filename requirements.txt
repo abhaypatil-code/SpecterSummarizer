@@ -1,33 +1,18 @@
-# NumPy must be <2.0 for PyTorch 2.1.0
-numpy<2.0
+# Core ML stack (CPU-friendly; install GPU torch separately if available)
+torch>=2.2
+transformers>=4.40
+accelerate>=0.26
+datasets>=2.18
+sentencepiece>=0.2
+numpy>=1.26,<2.3
 
-# PyTorch 2.1.0 with CUDA 11.8
---extra-index-url https://download.pytorch.org/whl/cu118
-torch==2.1.0
-torchvision==0.16.0
-torchaudio==2.1.0
-
-# Transformers and Accelerate - MUST match versions
-transformers==4.36.2
-accelerate==0.28.0
-tokenizers==0.15.0
-sentencepiece>=0.1.99
-protobuf>=3.20.0
-
-# Datasets and evaluation
-datasets>=2.14.0
-evaluate>=0.4.0
+# Summarization training metrics (optional but used by the README workflow)
 rouge-score>=0.1.2
-sacrebleu>=2.3.0
-nltk>=3.8
 
-# Training and optimization
-optuna>=3.0.0
+# Local retrieval-augmented chat (no external API)
+sentence-transformers>=3.0
+faiss-cpu>=1.8
 
-# Utilities
-tqdm>=4.65.0
-scikit-learn>=1.3.0
-pandas>=2.0.0
-
-# Development
-tensorboard>=2.14.0
+# App + PDF parsing
+streamlit>=1.36
+pypdf>=4.0
